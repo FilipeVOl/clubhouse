@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+  </head>
+  <body>
+    <% if (user) { %>
+    <h1>WELCOME BACK <%= user.username.toUpperCase() %></h1>
+    
+    <% if (user.membership_status === 'membro') { %>
+      <h2>Thank you for being a member!</h2>
+      <form action="/messages" method="get">
+          <button type="submit">Create new message</button>
+      </form>
+
+      <% if (messages) { %>
+        <% console.log(messages) %>
+        <h3>Your Messages:</h3>
+        <ul>
+          <% messages.forEach(function(msg) { %>
+            <li>
+              <strong>Title:</strong> <%= msg.title %><br>
+              <strong>Message:</strong> <%= msg.message %><br>
+              <strong>Created At:</strong> <%= msg.created_at %>
+            </li>
+          <% }) %>
+        </ul>
+      <% } else { %>
+        <p>No messages found or messages is undefined.</p>
+      <% } %>
+      
+    <% } else { %>
+      <h2>Would you like to become a <a href="/member">member?</a></h2>
+    <% } %>
+    
+    <a href="/logout">Log out</a>
+    <% } else { %>
+    <h1>Please log in</h1>
+    <form action="/login" method="post">
+      <label for="username">Username</label>
+      <input type="text" name="username" placeholder="username" id="username" />
+      <label for="password">Password</label>
+      <input
+        type="password"
+        name="password"
+        placeholder="password"
+        id="password"
+      />
+      <button type="submit">Log in</button>
+    </form>
+    <h3>If you don't have an account, please <a href="/sign">Register!</a></h3>
+    <% } %>
+  </body>
+</html>

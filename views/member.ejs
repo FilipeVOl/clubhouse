@@ -1,0 +1,36 @@
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Member Page</title>
+</head>
+<body>
+    <% if (message) { %>
+        <p><%= message %></p>
+    <% } %> 
+    <% if (message === 'You are now a member!') { %>
+        <a href="/">Back</a> 
+    <% } %>
+    <% console.log("USER IN EJS", user) %>
+    <p>Membership Status: <%= user.membership_status %></p>
+
+    <!-- Exibe o formulário somente se o status for 'visitante' -->
+    <% if (user.membership_status === 'visitante') { %> 
+        <form action="/member" method="post" onsubmit="reloadPage()">
+            <label for="member">Become a member!</label>
+            <label for="code">Enter the secret code</label>
+            <input type="number" name="code" id="code">
+            <button type="submit">Click here</button>
+        </form>
+    <% } else { %>
+        <h1>Thank you for being a member!</h1>
+    <% } %>
+
+    <script>
+        function reloadPage() {
+            setTimeout(function() {
+                window.location.reload();
+            }, 1000); // Aguarda 1 segundo antes de recarregar a página
+        }
+    </script>
+</body>
+</html>
