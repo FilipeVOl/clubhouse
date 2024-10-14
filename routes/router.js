@@ -8,22 +8,26 @@ const { body, validationResult } = require("express-validator");
 
 // Middleware para verificar se o usuário está autenticado
 function ensureAuthenticated(req, res, next) {
-  console.log("ensureAuthenticated called", req.isAuthenticated());
   if (req.isAuthenticated() && req.user) {
-    console.log("User is authenticated:", req.user); // Adicione esta linha para depuração
+    return next();
+  }
+  res.redirect("/login");
+}
+
+// Middleware para verificar se o usuário é administrador
+function ensureAdmin(req, res, next) {
+  if (req.isAuthenticated() && req.user.membership_status === 'admin') {
     return next();
   }
   res.redirect("/login");
 }
 
 router.get("/", async (req, res, next) => {
-  // Se o usuário não estiver autenticado, exibe a página de login
   if (!req.isAuthenticated()) {
-    return res.render("login"); // Certifique-se de ter a view login.ejs
+    return res.render("login");
   }
 
   try {
-    // Se o usuário estiver autenticado, buscar suas mensagens
     const { rows: messages } = await pool.query(
       `SELECT 
         messages.id AS message_id, 
@@ -36,20 +40,39 @@ router.get("/", async (req, res, next) => {
         messages.user_id = $1`, [req.user.id]
     );
 
-    // Renderiza a página principal com as mensagens do usuário
-    res.render("index", { user: req.user, messages: messages });
+    const { rows: membersMessages } = await pool.query(
+      `SELECT 
+        messages.id AS message_id, 
+        messages.title, 
+        messages.message, 
+        messages.created_at, 
+        users.id AS user_id, 
+        users.fullname, 
+        users.username, 
+        users.membership_status 
+      FROM 
+        messages 
+      INNER JOIN 
+        users 
+      ON 
+        messages.user_id = users.id
+      WHERE 
+        users.membership_status = 'membro'
+      AND
+        users.id != $1;`, [req.user.id]
+    );
+
+    res.render("index", { user: req.user, messages: messages, membersMessages: membersMessages });
   } catch (err) {
     next(err);
   }
 });
-
 
 router.get("/sign", (req, res) => {
   res.render("sign");
 });
 
 router.get("/member", ensureAuthenticated, (req, res) => {
-  console.log("User in /member GET route:", req.user); // Adicione esta linha para depuração
   res.render("member", { user: req.user, message: null });
 });
 
@@ -80,9 +103,10 @@ router.post(
         console.log("Error:", err);
       }
       try {
+        const isAdmin = req.body.admin ? 'admin' : 'visitante';
         await pool.query(
-          "INSERT INTO users (username, fullname, membership_status, password) VALUES ($1, $2, 'visitante', $3)",
-          [req.body.username, req.body.fullname, hash]
+          "INSERT INTO users (username, fullname, membership_status, password) VALUES ($1, $2, $3, $4)",
+          [req.body.username, req.body.fullname, isAdmin, hash]
         );
         res.redirect("/");
       } catch (err) {
@@ -101,7 +125,7 @@ router.post("/", (req, res, next) => {
       if (err) {
         return next(err);
       }
-      return res.redirect("/"); // Redireciona corretamente após o login
+      return res.redirect("/");
     });
   })(req, res, next);
 });
@@ -136,7 +160,7 @@ passport.use(
 
       return done(null, user);
     } catch (err) {
-      console.log("Error in localStrategy:", err); // Logar qualquer erro
+      console.log("Error in localStrategy:", err);
       return done(err);
     }
   })
@@ -147,14 +171,11 @@ passport.serializeUser((user, done) => {
 });
 
 passport.deserializeUser(async (id, done) => {
-  console.log("Deserializing user with ID:", id); // Log para verificar o ID
-
   try {
     const { rows } = await pool.query("SELECT * FROM users WHERE id = $1", [
       id,
     ]);
     const user = rows[0];
-    console.log("Deserialized user:", user); // Adicione esta linha para depuração
     done(null, user);
   } catch (err) {
     done(err);
@@ -164,7 +185,6 @@ passport.deserializeUser(async (id, done) => {
 const SECRET_CODE = 999;
 
 router.post("/member", ensureAuthenticated, async (req, res, next) => {
-  console.log("User in POST /member:", req.user); // Verifica se o usuário está presente
   const { code } = req.body;
   if (parseInt(code) === SECRET_CODE) {
     try {
@@ -190,17 +210,15 @@ router.post("/member", ensureAuthenticated, async (req, res, next) => {
   }
 });
 
-router.post("/create", async (req, res, next) => {
+router.post("/create", ensureAuthenticated, async (req, res, next) => {
   const { title, message } = req.body;
   try {
-    // Inserir a mensagem no banco de dados
     await pool.query("INSERT INTO messages (title, message, user_id) VALUES ($1, $2, $3)", [
       title,
       message,
       req.user.id,
     ]);
 
-    // Buscar todas as mensagens do usuário autenticado
     const { rows: messages } = await pool.query(
       `SELECT 
         messages.id AS message_id, 
@@ -221,10 +239,39 @@ router.post("/create", async (req, res, next) => {
         users.id = $1;`, [req.user.id]
     );
 
-    console.log("Messages retrieved:", messages); // Log para verificar as mensagens
+    const { rows: membersMessages } = await pool.query(
+      `SELECT 
+        messages.id AS message_id, 
+        messages.title, 
+        messages.message, 
+        messages.created_at, 
+        users.id AS user_id, 
+        users.fullname, 
+        users.username, 
+        users.membership_status 
+      FROM 
+        messages 
+      INNER JOIN 
+        users 
+      ON 
+        messages.user_id = users.id
+      WHERE 
+        users.membership_status = 'membro'
+      AND
+        users.id != $1;`, [req.user.id]
+    );
 
-    // Renderizar a página inicial com as mensagens
-    res.render("index", { user: req.user, messages: messages });
+    res.render("index", { user: req.user, messages: messages, membersMessages: membersMessages });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/delete-message/:id", ensureAdmin, async (req, res, next) => {
+  const messageId = req.params.id;
+  try {
+    await pool.query("DELETE FROM messages WHERE id = $1", [messageId]);
+    res.redirect("/");
   } catch (err) {
     next(err);
   }
@@ -232,8 +279,6 @@ router.post("/create", async (req, res, next) => {
 
 router.get("/messages", ensureAuthenticated, async (req, res, next) => {
   res.render("messages");
-})
-
-
+});
 
 module.exports = router;
